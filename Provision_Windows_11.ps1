@@ -41,6 +41,12 @@
        - If any of these settings do not match the desired state, it will be reported as [WARN].
        - Current registry values for each setting are displayed for reference.
 
+    6. Language Packs & Keyboard Layouts:
+       - English (Canada) [en-CA], English (United States) [en-US], and Chinese (Simplified, Mainland China) [zh-Hans-CN] should be installed.
+       - The corresponding input methods / IMEs should be available (e.g., Microsoft Pinyin for Chinese).
+       - If any of these languages or input methods are not installed, it will be reported as [WARN].
+       - Installed languages and input methods are displayed for reference.
+
     Reporting Levels:
        - [OK]    : Matches the desired state exactly.
        - [WARN]  : Valid state but not the desired configuration.
@@ -51,7 +57,6 @@
        - All technical values are printed prior to the determination.
        - The script checks only the current user scope for Vivaldi and default apps.
 #>
-
 
 function Write-Log {
     param(
@@ -255,4 +260,84 @@ if ($changesMade) {
     Stop-Process -ProcessName explorer -Force
 } else {
     Write-Log "No changes made. Explorer restart not required." "INFO"
+}
+
+# --- Language and Keyboard Layout Check ---
+Write-Host "`n--- Checking installed language packs and input methods ---" -ForegroundColor Yellow
+
+# Desired language codes
+$desiredLanguages = @(
+    "en-CA",  # English (Canada)
+    "en-US",  # English (United States)
+    "zh-Hans-CN"   # Chinese (Simplified, Mainland China)
+)
+
+# Get installed languages
+try {
+    $installedLanguages = (Get-WinUserLanguageList).LanguageTag
+    Write-Host "Installed languages: $($installedLanguages -join ', ')"
+} catch {
+    Write-Log "Unable to retrieve installed language list." "ERROR"
+    $installedLanguages = @()
+}
+
+$changesMade = $false
+
+foreach ($lang in $desiredLanguages) {
+    if ($installedLanguages -contains $lang) {
+        Write-Log "$lang is installed." "OK"
+    } else {
+        Write-Log "$lang not found. Attempting installation..." "WARN"
+        try {
+            # Install basic language pack (requires admin)
+            Write-Log "Installing language pack for $lang..." "INFO"
+            dism /online /add-capability /capabilityname:Language.Basic~~~$lang~0.0.1.0 /quiet /norestart | Out-Null
+            Write-Log "Adding language to user list..." "INFO"
+            $list = Get-WinUserLanguageList
+            $list.Add($lang)
+            Set-WinUserLanguageList $list -Force
+            Write-Log "$lang language added successfully." "SUCCESS"
+            $changesMade = $true
+        } catch {
+            Write-Log "Failed to install $lang language pack." "ERROR"
+        }
+    }
+}
+
+# --- Check input methods ---
+try {
+    $userLangs = Get-WinUserLanguageList
+    $inputProfiles = @()
+    foreach ($l in $userLangs) {
+        $inputProfiles += $l.InputMethodTips
+    }
+    Write-Host "Installed input methods: $($inputProfiles -join ', ')"
+} catch {
+    Write-Log "Unable to read input methods." "ERROR"
+}
+
+# --- Ensure Chinese IME (Microsoft Pinyin) is enabled ---
+# Microsoft Pinyin typically appears as a TIP ID starting with 0804:
+if (-not ($inputProfiles -match "^0804:")) {
+    Write-Log "Chinese IME not found. Adding Microsoft Pinyin..." "WARN"
+    try {
+        foreach ($lang in $userLangs) {
+            if ($lang.LanguageTag -eq "zh-Hans-CN") {
+                # Microsoft Pinyin IME TIP code
+                $lang.InputMethodTips.Add("0804:{81D4E9C9-1D3B-41BC-9E6C-4B40BF79E35E}{FA550B04-5AD7-411F-A5AC-CA038EC515D7}")
+            }
+        }
+        Set-WinUserLanguageList $userLangs -Force
+        Write-Log "Chinese IME added successfully." "SUCCESS"
+    } catch {
+        Write-Log "Failed to add Chinese IME." "ERROR"
+    }
+} else {
+    Write-Log "Chinese IME already present." "OK"
+}
+
+if ($changesMade) {
+    Write-Log "Language configuration updated. No display language changes were made. A restart may be required for full effect." "INFO"
+} else {
+    Write-Log "All required languages and input methods already configured." "OK"
 }
