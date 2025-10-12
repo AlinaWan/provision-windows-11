@@ -47,6 +47,13 @@
        - If any of these languages or input methods are not installed, it will be reported as [WARN].
        - Installed languages and input methods are displayed for reference.
 
+    7. Optional Applications:
+       - Python should be installed if the -InstallPython switch is used.
+       - Visual Studio Code should be installed if the -InstallVSCode switch is used.
+       - Both applications are installed in the current user scope without requiring admin privileges.
+       - Installation status and paths are displayed for reference.
+       - If installation fails, it is reported as [ERROR].
+
     Reporting Levels:
        - [OK]    : Matches the desired state exactly.
        - [WARN]  : Valid state but not the desired configuration.
@@ -57,6 +64,11 @@
        - All technical values are printed prior to the determination.
        - The script checks only the current user scope for Vivaldi and default apps.
 #>
+
+param(
+    [switch]$InstallPython,
+    [switch]$InstallVSCode
+)
 
 function Write-Log {
     param(
@@ -72,6 +84,10 @@ function Write-Log {
         default { Write-Host "[INFO] $Message" -ForegroundColor Cyan }
     }
 }
+
+Write-Log "Available switches:" "INFO"
+Write-Log "  -InstallPython  : Check and install Python (user scope)" "INFO"
+Write-Log "  -InstallVSCode  : Check and install Visual Studio Code (user scope)" "INFO"
 
 # Desired settings
 $DesiredDefaults = @{
@@ -343,4 +359,36 @@ if ($changesMade) {
     Write-Log "Language configuration updated. No display language changes were made. A restart may be required for full effect." "INFO"
 } else {
     Write-Log "All required languages and input methods already configured." "OK"
+}
+
+if ($InstallPython) {
+    Write-Host "`n--- Checking Python installation (user scope) ---" -ForegroundColor Yellow
+    try {
+        $python = Get-Command python -ErrorAction Stop
+        Write-Log "Python is already installed at $($python.Path)" "OK"
+    } catch {
+        Write-Log "Python not found. Installing user-scope Python via Winget..." "WARN"
+        try {
+            winget install Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements
+            Write-Log "Python installation attempted." "SUCCESS"
+        } catch {
+            Write-Log "Failed to install Python." "ERROR"
+        }
+    }
+}
+
+if ($InstallVSCode) {
+    Write-Host "`n--- Checking Visual Studio Code installation (user scope) ---" -ForegroundColor Yellow
+    $vscodePath = "$env:LOCALAPPDATA\Programs\Microsoft VS Code\Code.exe"
+    if (Test-Path $vscodePath) {
+        Write-Log "Visual Studio Code is already installed at $vscodePath" "OK"
+    } else {
+        Write-Log "VS Code not found. Installing user-scope via Winget..." "WARN"
+        try {
+            winget install Microsoft.VisualStudioCode --scope user -e --silent
+            Write-Log "VS Code installation attempted." "SUCCESS"
+        } catch {
+            Write-Log "Failed to install VS Code." "ERROR"
+        }
+    }
 }
