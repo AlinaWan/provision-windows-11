@@ -42,7 +42,7 @@
        - Current registry values for each setting are displayed for reference.
 
     6. Language Packs & Keyboard Layouts:
-       - English (Canada) [en-CA], English (United States) [en-US], and Chinese (Simplified, Mainland China) [zh-Hans-CN] should be installed.
+       - English (Canada) [en-CA], English (United States) [en-US], and Chinese (Simplified, Mainland China) [zh-Hans-CN] should be installed (user scope).
        - The corresponding input methods / IMEs should be available (e.g., Microsoft Pinyin for Chinese).
        - If any of these languages or input methods are not installed, it will be reported as [WARN].
        - Installed languages and input methods are displayed for reference.
@@ -263,7 +263,7 @@ if ($changesMade) {
 }
 
 # --- Language and Keyboard Layout Check ---
-Write-Host "`n--- Checking installed language packs and input methods ---" -ForegroundColor Yellow
+Write-Host "`n--- Checking installed language packs and input methods (user scope) ---" -ForegroundColor Yellow
 
 # Desired language codes
 $desiredLanguages = @(
@@ -287,19 +287,22 @@ foreach ($lang in $desiredLanguages) {
     if ($installedLanguages -contains $lang) {
         Write-Log "$lang is installed." "OK"
     } else {
-        Write-Log "$lang not found. Attempting installation..." "WARN"
+        Write-Log "$lang not found. Adding for current user..." "WARN"
         try {
-            # Install basic language pack (requires admin)
-            Write-Log "Installing language pack for $lang..." "INFO"
-            dism /online /add-capability /capabilityname:Language.Basic~~~$lang~0.0.1.0 /quiet /norestart | Out-Null
-            Write-Log "Adding language to user list..." "INFO"
+            Write-Log "Adding $lang to user language list..." "INFO"
             $list = Get-WinUserLanguageList
             $list.Add($lang)
             Set-WinUserLanguageList $list -Force
-            Write-Log "$lang language added successfully." "SUCCESS"
+            Write-Log "$lang language added successfully for current user." "SUCCESS"
             $changesMade = $true
+
+            # Trigger background LXP (Language Experience Pack) fetch, user-scope only
+            Write-Log "Triggering Store-based installation for $lang (no admin needed)..." "INFO"
+            $null = (New-WinUserLanguageList $lang | Set-WinUserLanguageList -Force)
+            Start-Sleep -Seconds 2
+
         } catch {
-            Write-Log "Failed to install $lang language pack." "ERROR"
+            Write-Log "Failed to add $lang for current user." "ERROR"
         }
     }
 }
